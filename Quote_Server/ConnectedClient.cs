@@ -169,9 +169,7 @@ namespace Quote_Server
                             else if (ParsedString[0] == "ALL")
                                 SendAll = true;
                             else if (ParsedString[0] == "Tick_Data")
-                            {
-                                _IncludeAllData = true;
-                            }                               
+                                Process_Tick_Data(TempMessageBuffer);
                             else if (ParsedString[0] == "List_ManualTrade")
                                 Process_List_ManualTrade(TempMessageBuffer);
                             else if (ParsedString[0] == "TestConnection")
@@ -198,6 +196,17 @@ namespace Quote_Server
                     List_Symbols.Add(Symbol);
                     Dictionary_BidAskObjects.Add(Symbol, new Bid_Ask());
                 }
+            }
+        }
+
+        private void Process_Tick_Data(string message)
+        {
+            string[] ParsedString = message.Split(',');
+            _IncludeAllData = true;
+            foreach (string Symbol in ParsedString)
+            {
+                if (Symbol != "Tick_Data")
+                    List_Symbols.Add(Symbol);
             }
         }
 
