@@ -170,7 +170,6 @@ namespace Quote_Server
                                 SendAll = true;
                             else if (ParsedString[0] == "Tick_Data")
                             {
-                                SendAll = true;
                                 _IncludeAllData = true;
                             }                               
                             else if (ParsedString[0] == "List_ManualTrade")
