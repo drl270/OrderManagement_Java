@@ -168,6 +168,11 @@ namespace Quote_Server
                                 ProcessList(TempMessageBuffer);
                             else if (ParsedString[0] == "ALL")
                                 SendAll = true;
+                            else if (ParsedString[0] == "Tick_Data")
+                            {
+                                SendAll = true;
+                                _IncludeAllData = true;
+                            }                               
                             else if (ParsedString[0] == "List_ManualTrade")
                                 Process_List_ManualTrade(TempMessageBuffer);
                             else if (ParsedString[0] == "TestConnection")
