@@ -23,6 +23,8 @@ namespace Quote_Server
         public Form1()
         {
             InitializeComponent();
+            SharedLocal.PopulateNetworkConnectionsPaths();
+            SharedLocal.PopulateDictionaryFuturesContracts();
             StartUp_Serialization();
         }
 

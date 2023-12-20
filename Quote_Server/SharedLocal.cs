@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -18,6 +19,10 @@ namespace Quote_Server
         static object _Port_Remote_Obj = new object();
         static object _Port_Local_Obj = new object();
         static object _MaxNoResponseTime_Obj = new object();
+        static readonly object _ListNetworkConnectionsPaths_Object = new object();
+
+        static List<string> _ListNetworkConnectionsPaths = null;
+        static ConcurrentDictionary<string, FuturesContract> _Dictionary_Futures_Contracts = null;
 
         public static string IP_Remote
         {
@@ -41,6 +46,31 @@ namespace Quote_Server
         {
             get { lock (_MaxNoResponseTime_Obj) return _MaxNoResponseTime; }
             set { lock (_MaxNoResponseTime_Obj) _MaxNoResponseTime = value; }
+        }
+        public static List<string> NetworkConnectionsPaths
+        {
+            get { lock (_ListNetworkConnectionsPaths_Object) { return _ListNetworkConnectionsPaths; } }
+        }
+
+        public static void PopulateNetworkConnectionsPaths()
+        {
+            _ListNetworkConnectionsPaths = FlatFileManager.Populate_ListNetworkConnectionsPaths();
+        }
+
+        public static void PopulateDictionaryFuturesContracts()
+        {
+            _Dictionary_Futures_Contracts = FlatFileManager.CreateDictionaryFuturesContracts();
+        }
+
+        public static FuturesContract CheckNonStandardFuturesQuote(string symbol)
+        {
+            if (_Dictionary_Futures_Contracts.ContainsKey(symbol))
+            {
+                if (_Dictionary_Futures_Contracts[symbol].NonStandard)
+                    return _Dictionary_Futures_Contracts[symbol];
+            }
+
+            return null;
         }
 
         public static string Get_RemoteUserID()
