@@ -101,49 +101,12 @@ namespace Quote_Server
                 string[] parsedQuote = quote.Split(',');
                 QuoteEventArgs obj = null;
                 string symbol = parsedQuote[0];
-                FuturesContract futuresContract = SharedLocal.CheckNonStandardFuturesQuote(symbol);
                 string bid = parsedQuote[1];
                 string ask = parsedQuote[2];
                 string lastPrice = parsedQuote[7];
                 string close = parsedQuote[8];
                 string high = parsedQuote[9];
-                string low = parsedQuote[10];
-
-                if (futuresContract != null)
-                {                   
-                    string[] bidParsed = bid.Split(' ');
-                    string[] askParsed = ask.Split(' ');
-                    string[] lastPriceParsed = lastPrice.Split(' ');
-                    string[] closeParsed = close.Split(' ');
-                    string[] highParsed = high.Split(' ');
-                    string[] lowParsed = low.Split(' ');
-                    if (bidParsed.Length > 0 && askParsed.Length > 0) 
-                    {                       
-                        string firstBid = bidParsed[0];
-                        double secondBid = Convert.ToDouble(bidParsed[1]) * Convert.ToDouble(futuresContract.Tick_Size);
-                        bid = firstBid + "." + secondBid.ToString();
-
-                        string firstAsk = askParsed[0];
-                        double secondAsk = Convert.ToDouble(askParsed[1]) * Convert.ToDouble(futuresContract.Tick_Size);
-                        ask = firstAsk + "." + secondAsk.ToString();
-
-                        string firstlastPrice = lastPriceParsed[0];
-                        double secondlastPrice = Convert.ToDouble(lastPrice[1]) * Convert.ToDouble(futuresContract.Tick_Size);
-                        lastPrice = firstlastPrice + "." + secondlastPrice.ToString();
-
-                        string firstclose = closeParsed[0];
-                        double secondclose = Convert.ToDouble(close[1]) * Convert.ToDouble(futuresContract.Tick_Size);
-                        close = firstclose + "." + secondclose.ToString();
-
-                        string firsthigh = highParsed[0];
-                        double secondhigh = Convert.ToDouble(high[1]) * Convert.ToDouble(futuresContract.Tick_Size);
-                        high = firsthigh + "." + secondhigh.ToString();
-
-                        string firstlow = lowParsed[0];
-                        double secondlow = Convert.ToDouble(low[1]) * Convert.ToDouble(futuresContract.Tick_Size);
-                        low = firstlow + "." + secondlow.ToString();
-                    }
-                }
+                string low = parsedQuote[10];             
 
                 if (parsedQuote.Length == 11)
                 {
