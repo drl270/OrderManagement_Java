@@ -8,8 +8,8 @@ public class Main
 {
     public static void main(String[] args) 
     {
-        OrderManagementSystem oms = new OrderManagementSystem();
-        oms.enterOrder("TSLA", SecurityType.STOCK);
+       
+        GUI gui = new GUI();
     }
 }
 

@@ -1,5 +1,6 @@
 package Mod5;
 
+import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -7,15 +8,23 @@ public class CustomLogging
 {
     private static final Logger logger = Logger.getLogger(CustomLogging.class.getName());
     private static final LogFormatter formatter = new LogFormatter();
-    private static final LogHandler handler = new LogHandler(formatter);
+    private static LogHandler handler;
 
-    static
+    static 
     {
         logger.setLevel(Level.ALL);
-        logger.addHandler(handler);
+        try
+        {
+            handler = new LogHandler(formatter, "log.txt");
+            logger.addHandler(handler);
+        } 
+        catch (IOException e) 
+        {
+            System.err.println("Error creating file: " + e.getMessage());
+        }
     }
 
-    public static void log(Level level, String message) 
+    public static void log(Level level, String message)
     {
         logger.log(level, message);
     }
