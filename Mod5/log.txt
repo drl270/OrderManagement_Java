@@ -3,3 +3,5 @@
 2025-03-10 16:55:14 - Mod5.CustomLogging - INFO - Order entered: 1, TSLA, STOCK
 2025-03-10 16:55:33 - Mod5.CustomLogging - INFO - Order entered: 2, MSFT, STOCK
 2025-03-11 00:13:17 - Mod5.CustomLogging - INFO - Order entered: 5, TSLA, STOCK
+2025-03-17 18:42:52 - Mod5.CustomLogging - INFO - Order entered: 6, AAPL, STOCK
+2025-03-17 18:45:17 - Mod5.CustomLogging - INFO - Order entered: 7, AAPL, STOCK

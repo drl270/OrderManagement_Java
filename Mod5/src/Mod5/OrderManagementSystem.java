@@ -85,48 +85,6 @@ public class OrderManagementSystem
     }
 }
 
-class Order 
-{
-    private int orderId;
-    private int traderId;
-    private Security.SecurityType security;
-    private int quantity;
-    private String orderType;
-    
-    public Order(int orderId, int traderId, Security.SecurityType security, int quantity, String orderType) 
-    {
-        this.orderId = orderId;
-        this.traderId = traderId;
-        this.security = security;
-        this.quantity = quantity;
-        this.orderType = orderType;
-    }
-
-    public int getOrderId() 
-    {
-        return orderId;
-    }
-
-    public int getTraderId() 
-    {
-        return traderId;
-    }
-
-    public Security.SecurityType getSecurity() 
-    {
-        return security;
-    }
-
-    public int getQuantity() 
-    {
-        return quantity;
-    }
-
-    public String getOrderType() 
-    {
-        return orderType;
-    }
-}
 
 class Trader 
 {
