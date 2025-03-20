@@ -7,6 +7,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.swing.table.DefaultTableModel;
 
@@ -55,7 +57,8 @@ public class MySQLDBManager
             System.out.println("Error writing orders to DB: " + e.getMessage());
         }
     }
-
+    
+    // Returns all 'Order' objects 
     public void readOrdersFromDB(DefaultTableModel ordersTableModel) 
     {
         try (Connection connection = DriverManager.getConnection("jdbc:mysql://" + SERVER + ":" + PORT + "/" + DB_NAME, USERNAME, PASSWORD)) 
@@ -81,6 +84,7 @@ public class MySQLDBManager
         }
     }
     
+   // Returns 'Order' object by ID
     public Order getOrderById(int orderId) 
     {
         Order order = null;
@@ -104,5 +108,35 @@ public class MySQLDBManager
             System.out.println("Error retrieving order from DB: " + e.getMessage());
         }
         return order;
+    }
+    
+    
+    // Returns list of 'Order' objects by symbol
+    public List<Order> getOrdersBySymbol(String symbol) 
+    {
+        List<Order> orders = new ArrayList<>();
+        try (Connection connection = DriverManager.getConnection("jdbc:mysql://" + SERVER + ":" + PORT + "/" + DB_NAME, USERNAME, PASSWORD)) 
+        {
+            String query = "SELECT orderid, securitytype FROM " + TABLE_NAME + " WHERE symbol = ?";
+            PreparedStatement statement = connection.prepareStatement(query);
+            statement.setString(1, symbol);
+            ResultSet resultSet = statement.executeQuery();
+
+            while (resultSet.next())
+            {
+                int orderId = resultSet.getInt("orderid");
+                String securityTypeString = resultSet.getString("securitytype");
+                Security.SecurityType securityType = Security.SecurityType.valueOf(securityTypeString);
+                String orderType = symbol; 
+
+                Order order = new Order(orderId, 0, securityType, 0, orderType);
+                orders.add(order);
+            }
+        } 
+        catch (SQLException e)
+        {
+            System.out.println("Error retrieving orders by symbol: " + e.getMessage());
+        }
+        return orders;
     }
 }
