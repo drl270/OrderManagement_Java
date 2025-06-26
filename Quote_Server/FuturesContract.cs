@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Quote_Server
+namespace QuoteServer
 {
     public class FuturesContract
     {

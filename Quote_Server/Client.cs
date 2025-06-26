@@ -1,134 +1,246 @@
 ﻿using System;
-using System.Windows.Forms;
-using System.IO;
-using System.Threading;
-using System.Net;
+using System.Buffers;
 using System.Net.Sockets;
+using System.Text;
+using System.Threading;
 
-namespace Quote_Server
+namespace QuoteServer
 {
-    public static class Client
+    public class Client : IDisposable
     {
-        const int bytes_to_read = 255;
-        static byte[] readBuffer = new byte[bytes_to_read];
-        static string quoteBuffer = "";
-        static TcpClient tcpClient;
-        static NetworkStream quoteStream;
+        private const int ReadBufferSize = 1024;
+        private readonly byte[] _readBuffer;
+        private byte[] _quoteBuffer;
+        private int _quoteBufferLength;
+        private int _processedOffset;
+        private readonly TcpClient _tcpClient;
+        private NetworkStream _quoteStream;
+        private readonly string _ipAddress;
+        private readonly int _port;
+        private bool _disposed;
 
-        public static event EventHandler<QuoteEventArgs> QuoteUpdate;
+        public event EventHandler<Quote> QuoteUpdate;
 
-        public static void establishClientConnection()
+        public Client()
         {
+            _ipAddress = SharedLocal.Instance.IpRemote;
+            _port = SharedLocal.Instance.PortRemote;
+
+            if (string.IsNullOrEmpty(_ipAddress)|| _port == 0)
+            {
+                throw new ArgumentNullException("ipAddress");
+            }
+
+            _readBuffer = new byte[ReadBufferSize];
+            _quoteBuffer = ArrayPool<byte>.Shared.Rent(8192);
+            _quoteBufferLength = 0;
+            _processedOffset = 0;
+            _tcpClient = new TcpClient();
+            _quoteStream = null; 
+        }
+
+        public void EstablishClientConnection()
+        {
+            if (_tcpClient.Connected)
+            {
+                return; // Already connected
+            }
+
             try
             {
-                tcpClient = new TcpClient(SharedLocal.IP_Remote, SharedLocal.Port_Remote);
-                quoteStream = tcpClient.GetStream();
-                quoteStream.BeginRead(readBuffer, 0, bytes_to_read, doRead, tcpClient);
+                _tcpClient.Connect(_ipAddress, _port);
+                _quoteStream = _tcpClient.GetStream();
+                _quoteStream.BeginRead(_readBuffer, 0, ReadBufferSize, DoRead, null);
             }
-            catch (Exception exception) 
+            catch (Exception ex)
             {
-                MessageBox.Show(Convert.ToString(exception));
+                throw new InvalidOperationException($"Failed to connect to {_ipAddress}:{_port}", ex);
             }
         }
 
-        public static bool ShutDown_TCPData()
+        public bool ShutdownTcpData()
         {
-            if (tcpClient != null)
+            try
             {
-                if (tcpClient.Connected)
-                    tcpClient.Close();
+                if (_tcpClient != null && _tcpClient.Connected)
+                {
+                    _tcpClient.Close();
+                }
 
-                if (tcpClient.Connected == false)
+                if (!_tcpClient.Connected)
+                {
+                    ArrayPool<byte>.Shared.Return(_quoteBuffer);
+                    _quoteBuffer = ArrayPool<byte>.Shared.Rent(8192); // Reset for next connection
+                    _quoteBufferLength = 0;
+                    _processedOffset = 0;
                     return true;
-                else
-                    return false;
-            }
-            else
-                return true;
-        }
-
-        static void doRead(IAsyncResult ar)
-        {
-            TcpClient tcpClient = (TcpClient)ar.AsyncState;
-            try
-            {
-                int bytesRead = tcpClient.GetStream().EndRead(ar);
-                if (bytesRead > 0)
-                {
-                    string quote = System.Text.Encoding.UTF8.GetString(readBuffer, 0, bytesRead);
-                    proccessQuote(quote);
                 }
+
+                return false;
             }
-            catch (Exception exception) { MessageBox.Show(Convert.ToString(exception)); }
-            try
+            catch (Exception ex)
             {
-                NetworkStream quoteStream = tcpClient.GetStream();
-                quoteStream.BeginRead(readBuffer, 0, bytes_to_read, doRead, tcpClient);
+                throw new InvalidOperationException("Failed to shutdown TCP client", ex);
             }
-            catch (Exception e) { MessageBox.Show(Convert.ToString(e)); }
         }
 
-        static void proccessQuote(string quote)
+        private void DoRead(IAsyncResult ar)
         {
             try
             {
-                if (quoteBuffer.Length > 0)
+                if (_disposed || !_tcpClient.Connected)
                 {
-                    quote = quoteBuffer + quote;
+                    return;
                 }
-                string tempQuote = "";
-                for (int i = 0; i < quote.Length; i++)
+
+                int bytesRead = _quoteStream.EndRead(ar);
+                if (bytesRead <= 0)
                 {
-                    if (quote.Substring(i, 1) != "#")
+                    return; // Connection closed
+                }
+
+                lock (_quoteBuffer)
+                {
+                    if (_quoteBufferLength + bytesRead > _quoteBuffer.Length)
                     {
-                        if (quote.Substring(i, 1) == "%")
+                        byte[] newBuffer = ArrayPool<byte>.Shared.Rent(_quoteBuffer.Length * 2);
+                        Buffer.BlockCopy(_quoteBuffer, 0, newBuffer, 0, _quoteBufferLength);
+                        ArrayPool<byte>.Shared.Return(_quoteBuffer);
+                        _quoteBuffer = newBuffer;
+                    }
+
+                    Buffer.BlockCopy(_readBuffer, 0, _quoteBuffer, _quoteBufferLength, bytesRead);
+                    _quoteBufferLength += bytesRead;
+                    ProcessQuote();
+                }
+
+                if (_tcpClient.Connected)
+                {
+                    _quoteStream.BeginRead(_readBuffer, 0, ReadBufferSize, DoRead, null);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!_disposed && _tcpClient.Connected)
+                {
+                    throw new InvalidOperationException("Failed to read from TCP stream", ex);
+                }
+            }
+        }
+
+        private void ProcessQuote()
+        {
+            try
+            {
+                lock (_quoteBuffer)
+                {
+                    Span<byte> buffer = _quoteBuffer.AsSpan(0, _quoteBufferLength);
+                    int offset = _processedOffset;
+
+                    while (offset + 2 <= buffer.Length)
+                    {
+                        ushort symbolLength = (ushort)(buffer[offset] | (buffer[offset + 1] << 8));
+                        offset += 2;
+
+                        int fixedFieldSize = 56;
+                        if (offset + symbolLength + fixedFieldSize > buffer.Length)
                         {
-                            createQuoteObject(tempQuote);
-                            tempQuote = "";
+                            break;
                         }
-                        else { tempQuote = tempQuote + quote.Substring(i, 1); }
+
+                        string symbol = Encoding.UTF8.GetString(buffer.Slice(offset, symbolLength).ToArray());
+                        offset += symbolLength;
+
+                        double bid = BitConverter.ToDouble(buffer.Slice(offset, 8).ToArray(), 0);
+                        offset += 8;
+                        double ask = BitConverter.ToDouble(buffer.Slice(offset, 8).ToArray(), 0);
+                        offset += 8;
+
+                        int vol1 = (short)(buffer[offset] | (buffer[offset + 1] << 8));
+                        offset += 2;
+                        int vol2 = (short)(buffer[offset] | (buffer[offset + 1] << 8));
+                        offset += 2;
+                        int vol3 = (short)(buffer[offset] | (buffer[offset + 1] << 8));
+                        offset += 2;
+                        int vol4 = (short)(buffer[offset] | (buffer[offset + 1] << 8));
+                        offset += 2;
+
+                        double lastPrice = BitConverter.ToDouble(buffer.Slice(offset, 8).ToArray(), 0);
+                        offset += 8;
+                        double close = BitConverter.ToDouble(buffer.Slice(offset, 8).ToArray(), 0);
+                        offset += 8;
+                        double high = BitConverter.ToDouble(buffer.Slice(offset, 8).ToArray(), 0);
+                        offset += 8;
+                        double low = BitConverter.ToDouble(buffer.Slice(offset, 8).ToArray(), 0);
+                        offset += 8;
+
+                        CreateQuoteObject(symbol, bid, ask, vol1, vol2, vol3, vol4, lastPrice, close, high, low);
+                        _processedOffset = offset;
+                    }
+
+                    if (_processedOffset > 0)
+                    {
+                        int remaining = _quoteBufferLength - _processedOffset;
+                        if (remaining > 0)
+                        {
+                            Buffer.BlockCopy(_quoteBuffer, _processedOffset, _quoteBuffer, 0, remaining);
+                        }
+                        _quoteBufferLength = remaining;
+                        _processedOffset = 0;
                     }
                 }
-                quoteBuffer = tempQuote;
             }
-            catch (Exception exception) { MessageBox.Show(Convert.ToString(exception)); }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException("Failed to process quote data", ex);
+            }
         }
 
-        static void createQuoteObject(string quote)
+        private void CreateQuoteObject(string symbol, double bid, double ask, int vol1, int vol2, int vol3, int vol4,
+            double lastPrice, double close, double high, double low)
         {
             try
             {
-                string[] parsedQuote = quote.Split(',');
-                QuoteEventArgs obj = null;
-                string symbol = parsedQuote[0];
-                string bid = parsedQuote[1];
-                string ask = parsedQuote[2];
-                string lastPrice = parsedQuote[7];
-                string close = parsedQuote[8];
-                string high = parsedQuote[9];
-                string low = parsedQuote[10];             
-
-                if (parsedQuote.Length == 11)
+                if (string.IsNullOrEmpty(symbol))
                 {
-                    obj = new QuoteEventArgs(parsedQuote[0], Convert.ToDouble(bid), Convert.ToDouble(ask), Convert.ToInt32(parsedQuote[3]), Convert.ToInt32(parsedQuote[4]), Convert.ToInt32(parsedQuote[5]), Convert.ToInt32(parsedQuote[6]), Convert.ToDouble(lastPrice), Convert.ToDouble(close), Convert.ToDouble(high), Convert.ToDouble(low));
-                }
-                else if (parsedQuote.Length == 3)
-                {
-                    obj = new QuoteEventArgs(parsedQuote[0], Convert.ToDouble(bid), Convert.ToDouble(ask));
-                }
-                else if (parsedQuote.Length == 5)
-                {
-                    obj = new QuoteEventArgs(parsedQuote[0], Convert.ToDouble(bid), Convert.ToDouble(ask), Convert.ToDateTime(parsedQuote[3]), Convert.ToInt64(parsedQuote[4]));
+                    throw new ArgumentException("Symbol cannot be empty.");
                 }
 
+                Quote quote = new Quote(symbol, bid, ask, vol1, vol2, vol3, vol4, lastPrice, close, high, low);
+                QuoteUpdate?.Invoke(this, quote);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to create quote for symbol {symbol}", ex);
+            }
+        }
 
-                if (QuoteUpdate != null && obj != null)
+        public void Dispose()
+        {
+            if (!_disposed)
+            {
+                _disposed = true;
+                try
                 {
-                    EventHandler<QuoteEventArgs> UpdateHandler = QuoteUpdate;
-                    UpdateHandler(null, obj);
+                    if (_tcpClient != null)
+                    {
+                        if (_tcpClient.Connected)
+                        {
+                            _tcpClient.Close();
+                        }
+                        _tcpClient.Dispose();
+                    }
+                    if (_quoteBuffer != null)
+                    {
+                        ArrayPool<byte>.Shared.Return(_quoteBuffer);
+                        _quoteBuffer = null;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log error
                 }
             }
-            catch (Exception ex) { }           
         }
     }
 }

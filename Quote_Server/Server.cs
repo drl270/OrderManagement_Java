@@ -1,80 +1,137 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
 using System.IO;
-using System.Threading;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Formatters.Binary;
-using System.Reflection;
-using System.Xml.Serialization;
+using System.Threading;
 
-namespace Quote_Server
+namespace QuoteServer
 {
-    public static class Server
+    public class Server : IDisposable
     {
-        static TcpListener tcpListener;
-        static Form1 _Form1;
+        private readonly Dictionary<string, ConnectedClient> _connectedClients;
+        private readonly Form1 _form;
+        private readonly TcpListener _tcpListener;
+        private bool _disposed;
 
-        static Dictionary<string, ConnectedClient> Dictionary_ConnectedClients = new Dictionary<string, ConnectedClient>();
-        static Dictionary<string, DisplayObject> Dictionary_DisplayObjects = new Dictionary<string, DisplayObject>();
-
-        public static void createTCPServer(Form1 p_Form1)
+        public Server(Form1 form, int port)
         {
-            _Form1 = p_Form1;
-            tcpListener = new TcpListener(IPAddress.Any, SharedLocal.Port_Local);
-            tcpListener.Start();
-            Thread ListenerThread = new Thread(() => BeginListen());
-            ListenerThread.IsBackground = true;
-            ListenerThread.Start();
+            if (form == null)
+            {
+                throw new ArgumentNullException("form");
+            }
+
+            _form = form;
+            _connectedClients = new Dictionary<string, ConnectedClient>();
+            _tcpListener = new TcpListener(IPAddress.Any, port);
         }
 
-        private static void BeginListen()
+        public void CreateTcpServer()
         {
-            while (true)
+            try
             {
-                TcpClient tcpClient = tcpListener.AcceptTcpClient();
-                ConnectedClient connectedClient = new ConnectedClient(tcpClient, _Form1);
-                connectedClient.ConnectedClientConnectionLost += ConnectedClient_ConnectedClientConnectionLost;
-                connectedClient.UserID = SharedLocal.Get_RemoteUserID();
-                lock (Dictionary_ConnectedClients)
+                _tcpListener.Start();
+                Thread listenerThread = new Thread(BeginListen)
                 {
-                    Dictionary_ConnectedClients.Add(connectedClient.UserID, connectedClient);
+                    IsBackground = true
+                };
+                listenerThread.Start();
+            }
+            catch (Exception ex)
+            {
+                // Log error via SharedLocal or other mechanism
+                // SharedLocal.Instance.AddListGeneralInfo($"Failed to start TCP server: {ex.Message}");
+                throw new InvalidOperationException("Failed to start TCP server", ex);
+            }
+        }
+
+        private void BeginListen()
+        {
+            try
+            {
+                while (!_disposed)
+                {
+                    TcpClient tcpClient = _tcpListener.AcceptTcpClient();
+                    ConnectedClient connectedClient = new ConnectedClient(tcpClient, _form);
+                    connectedClient.ConnectedClientConnectionLost += ConnectedClientConnectionLost;
+                    connectedClient.UserID = SharedLocal.Instance.GetNextRemoteUserId();
+
+                    lock (_connectedClients)
+                    {
+                        _connectedClients.Add(connectedClient.UserID, connectedClient);
+                    }
+                }
+            }
+            catch (SocketException) when (_disposed)
+            {
+                // Expected when server is shutting down
+            }
+            catch (Exception ex)
+            {
+                // Log error
+                // SharedLocal.Instance.AddListGeneralInfo($"TCP server listen error: {ex.Message}");
+            }
+        }
+
+        public List<DisplayObject> GetDisplayObjects()
+        {
+            List<DisplayObject> displayObjects = new List<DisplayObject>();
+
+            lock (_connectedClients)
+            {
+                foreach (KeyValuePair<string, ConnectedClient> pair in _connectedClients)
+                {
+                    DisplayObject displayObject = pair.Value.GetDisplayObject();
+                    if (displayObject != null)
+                    {
+                        displayObjects.Add(displayObject);
+                    }
+                }
+            }
+
+            return displayObjects;
+        }
+
+        public void ShutdownServer()
+        {
+            try
+            {
+                _disposed = true;
+                _tcpListener.Stop();
+
+                lock (_connectedClients)
+                {
+                    foreach (ConnectedClient client in _connectedClients.Values)
+                    {
+                        client.Dispose();
+                    }
+                    _connectedClients.Clear();
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException("Failed to shutdown server", ex);
+            }
+        }
+
+        private void ConnectedClientConnectionLost(object sender, string userId)
+        {
+            lock (_connectedClients)
+            {
+                if (_connectedClients.ContainsKey(userId))
+                {
+                    _connectedClients.Remove(userId);
                 }
             }
         }
 
-        public static List<DisplayObject> Get_ListDisplayObject()
+        public void Dispose()
         {
-            List<DisplayObject> List_DisplayObjects = new List<DisplayObject>();
-
-            lock (Dictionary_ConnectedClients)
+            if (!_disposed)
             {
-                foreach (KeyValuePair<string, ConnectedClient> pair in Dictionary_ConnectedClients)
-                    List_DisplayObjects.Add(pair.Value.Get_displayObject());
-            }
-
-            return List_DisplayObjects;
-        }
-
-        public static void ShutDown_Server()
-        {
-           
-        }
-
-        private static void ConnectedClient_ConnectedClientConnectionLost(object sender, string e)
-        {
-            lock (Dictionary_ConnectedClients)
-            {
-                if (Dictionary_ConnectedClients.ContainsKey(e))
-                    Dictionary_ConnectedClients.Remove(e);
+                ShutdownServer();
             }
         }
     }

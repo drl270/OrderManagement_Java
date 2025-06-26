@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace Quote_Server.Properties {
+namespace QuoteServer.Properties {
     using System;
     
     

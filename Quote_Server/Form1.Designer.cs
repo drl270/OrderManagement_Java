@@ -1,4 +1,4 @@
-﻿namespace Quote_Server
+﻿namespace QuoteServer
 {
     partial class Form1
     {
@@ -30,65 +30,65 @@
         {
             this.components = new System.ComponentModel.Container();
             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle1 = new System.Windows.Forms.DataGridViewCellStyle();
-            this.btn_DataSource = new System.Windows.Forms.Button();
-            this.txt_Port_DataSource = new System.Windows.Forms.TextBox();
-            this.btn_Server = new System.Windows.Forms.Button();
-            this.txt_IP_DataSource = new System.Windows.Forms.TextBox();
-            this.txt_Port_Server = new System.Windows.Forms.TextBox();
+            this.btnDataSource = new System.Windows.Forms.Button();
+            this.txtPortDataSource = new System.Windows.Forms.TextBox();
+            this.btnServer = new System.Windows.Forms.Button();
+            this.txtIpDataSource = new System.Windows.Forms.TextBox();
+            this.txtPortServer = new System.Windows.Forms.TextBox();
             this.label1 = new System.Windows.Forms.Label();
             this.label2 = new System.Windows.Forms.Label();
             this.dataGridView1 = new System.Windows.Forms.DataGridView();
-            this.timer_TestConnection = new System.Windows.Forms.Timer(this.components);
+            this.timerTestConnection = new System.Windows.Forms.Timer(this.components);
             this.timer_Display = new System.Windows.Forms.Timer(this.components);
-            this.txt_MaximumNoResponeseTimeSeconds = new System.Windows.Forms.TextBox();
+            this.txtMaximumNoResponseTimeSeconds = new System.Windows.Forms.TextBox();
             ((System.ComponentModel.ISupportInitialize)(this.dataGridView1)).BeginInit();
             this.SuspendLayout();
             // 
             // btn_DataSource
             // 
-            this.btn_DataSource.BackColor = System.Drawing.Color.Salmon;
-            this.btn_DataSource.Location = new System.Drawing.Point(12, 8);
-            this.btn_DataSource.Name = "btn_DataSource";
-            this.btn_DataSource.Size = new System.Drawing.Size(75, 21);
-            this.btn_DataSource.TabIndex = 0;
-            this.btn_DataSource.Text = "Data Source";
-            this.btn_DataSource.UseVisualStyleBackColor = false;
-            this.btn_DataSource.Click += new System.EventHandler(this.btn_DataSource_Click);
+            this.btnDataSource.BackColor = System.Drawing.Color.Salmon;
+            this.btnDataSource.Location = new System.Drawing.Point(12, 8);
+            this.btnDataSource.Name = "btn_DataSource";
+            this.btnDataSource.Size = new System.Drawing.Size(75, 21);
+            this.btnDataSource.TabIndex = 0;
+            this.btnDataSource.Text = "Data Source";
+            this.btnDataSource.UseVisualStyleBackColor = false;
+            this.btnDataSource.Click += new System.EventHandler(this.btnDataSource_Click);
             // 
             // txt_Port_DataSource
             // 
-            this.txt_Port_DataSource.Location = new System.Drawing.Point(146, 5);
-            this.txt_Port_DataSource.Name = "txt_Port_DataSource";
-            this.txt_Port_DataSource.Size = new System.Drawing.Size(100, 18);
-            this.txt_Port_DataSource.TabIndex = 1;
-            this.txt_Port_DataSource.Text = "4001";
+            this.txtPortDataSource.Location = new System.Drawing.Point(146, 5);
+            this.txtPortDataSource.Name = "txt_Port_DataSource";
+            this.txtPortDataSource.Size = new System.Drawing.Size(100, 18);
+            this.txtPortDataSource.TabIndex = 1;
+            this.txtPortDataSource.Text = "4001";
             // 
             // btn_Server
             // 
-            this.btn_Server.BackColor = System.Drawing.Color.Salmon;
-            this.btn_Server.Location = new System.Drawing.Point(12, 35);
-            this.btn_Server.Name = "btn_Server";
-            this.btn_Server.Size = new System.Drawing.Size(75, 21);
-            this.btn_Server.TabIndex = 2;
-            this.btn_Server.Text = "Server";
-            this.btn_Server.UseVisualStyleBackColor = false;
-            this.btn_Server.Click += new System.EventHandler(this.btn_Server_Click);
+            this.btnServer.BackColor = System.Drawing.Color.Salmon;
+            this.btnServer.Location = new System.Drawing.Point(12, 35);
+            this.btnServer.Name = "btn_Server";
+            this.btnServer.Size = new System.Drawing.Size(75, 21);
+            this.btnServer.TabIndex = 2;
+            this.btnServer.Text = "Server";
+            this.btnServer.UseVisualStyleBackColor = false;
+            this.btnServer.Click += new System.EventHandler(this.btnServer_Click);
             // 
             // txt_IP_DataSource
             // 
-            this.txt_IP_DataSource.Location = new System.Drawing.Point(146, 31);
-            this.txt_IP_DataSource.Name = "txt_IP_DataSource";
-            this.txt_IP_DataSource.Size = new System.Drawing.Size(100, 18);
-            this.txt_IP_DataSource.TabIndex = 3;
-            this.txt_IP_DataSource.Text = "127.0.0.1";
+            this.txtIpDataSource.Location = new System.Drawing.Point(146, 31);
+            this.txtIpDataSource.Name = "txt_IP_DataSource";
+            this.txtIpDataSource.Size = new System.Drawing.Size(100, 18);
+            this.txtIpDataSource.TabIndex = 3;
+            this.txtIpDataSource.Text = "127.0.0.1";
             // 
             // txt_Port_Server
             // 
-            this.txt_Port_Server.Location = new System.Drawing.Point(266, 5);
-            this.txt_Port_Server.Name = "txt_Port_Server";
-            this.txt_Port_Server.Size = new System.Drawing.Size(100, 18);
-            this.txt_Port_Server.TabIndex = 4;
-            this.txt_Port_Server.Text = "4005";
+            this.txtPortServer.Location = new System.Drawing.Point(266, 5);
+            this.txtPortServer.Name = "txt_Port_Server";
+            this.txtPortServer.Size = new System.Drawing.Size(100, 18);
+            this.txtPortServer.TabIndex = 4;
+            this.txtPortServer.Text = "4005";
             // 
             // label1
             // 
@@ -128,37 +128,37 @@
             // 
             // timer_TestConnection
             // 
-            this.timer_TestConnection.Interval = 1000;
-            this.timer_TestConnection.Tick += new System.EventHandler(this.timer_TestConnection_Tick);
+            this.timerTestConnection.Interval = 1000;
+            this.timerTestConnection.Tick += new System.EventHandler(this.timerTestConnection_Tick);
             // 
             // timer_Display
             // 
             this.timer_Display.Enabled = true;
             this.timer_Display.Interval = 333;
-            this.timer_Display.Tick += new System.EventHandler(this.timer_Display_Tick);
+            this.timer_Display.Tick += new System.EventHandler(this.timerDisplay_Tick);
             // 
             // txt_MaximumNoResponeseTimeSeconds
             // 
-            this.txt_MaximumNoResponeseTimeSeconds.Location = new System.Drawing.Point(266, 31);
-            this.txt_MaximumNoResponeseTimeSeconds.Name = "txt_MaximumNoResponeseTimeSeconds";
-            this.txt_MaximumNoResponeseTimeSeconds.Size = new System.Drawing.Size(100, 18);
-            this.txt_MaximumNoResponeseTimeSeconds.TabIndex = 8;
-            this.txt_MaximumNoResponeseTimeSeconds.Text = "30";
+            this.txtMaximumNoResponseTimeSeconds.Location = new System.Drawing.Point(266, 31);
+            this.txtMaximumNoResponseTimeSeconds.Name = "txt_MaximumNoResponeseTimeSeconds";
+            this.txtMaximumNoResponseTimeSeconds.Size = new System.Drawing.Size(100, 18);
+            this.txtMaximumNoResponseTimeSeconds.TabIndex = 8;
+            this.txtMaximumNoResponseTimeSeconds.Text = "30";
             // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(549, 315);
-            this.Controls.Add(this.txt_MaximumNoResponeseTimeSeconds);
+            this.Controls.Add(this.txtMaximumNoResponseTimeSeconds);
             this.Controls.Add(this.dataGridView1);
             this.Controls.Add(this.label2);
             this.Controls.Add(this.label1);
-            this.Controls.Add(this.txt_Port_Server);
-            this.Controls.Add(this.txt_IP_DataSource);
-            this.Controls.Add(this.btn_Server);
-            this.Controls.Add(this.txt_Port_DataSource);
-            this.Controls.Add(this.btn_DataSource);
+            this.Controls.Add(this.txtPortServer);
+            this.Controls.Add(this.txtIpDataSource);
+            this.Controls.Add(this.btnServer);
+            this.Controls.Add(this.txtPortDataSource);
+            this.Controls.Add(this.btnDataSource);
             this.Font = new System.Drawing.Font("Microsoft Sans Serif", 7F);
             this.Name = "Form1";
             this.Text = "Quote_Server";
@@ -172,17 +172,17 @@
 
         #endregion
 
-        private System.Windows.Forms.Button btn_DataSource;
-        private System.Windows.Forms.TextBox txt_Port_DataSource;
-        private System.Windows.Forms.Button btn_Server;
-        private System.Windows.Forms.TextBox txt_IP_DataSource;
-        private System.Windows.Forms.TextBox txt_Port_Server;
+        private System.Windows.Forms.Button btnDataSource;
+        private System.Windows.Forms.TextBox txtPortDataSource;
+        private System.Windows.Forms.Button btnServer;
+        private System.Windows.Forms.TextBox txtIpDataSource;
+        private System.Windows.Forms.TextBox txtPortServer;
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.DataGridView dataGridView1;
-        private System.Windows.Forms.Timer timer_TestConnection;
+        private System.Windows.Forms.Timer timerTestConnection;
         private System.Windows.Forms.Timer timer_Display;
-        private System.Windows.Forms.TextBox txt_MaximumNoResponeseTimeSeconds;
+        private System.Windows.Forms.TextBox txtMaximumNoResponseTimeSeconds;
     }
 }
 

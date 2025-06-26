@@ -1,83 +1,130 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Threading;
 
-namespace Quote_Server
+namespace QuoteServer
 {
-    public static class SharedLocal
+    public sealed class SharedLocal
     {
-        static string _IP_Remote;
-        static int _Port_Remote;
-        static int _Port_Local;
-        static int _RemoteUserID = 0;
-        static int _MaxNoResponseTime;
+        private static readonly Lazy<SharedLocal> _instance = new Lazy<SharedLocal>(() => new SharedLocal());
+        private string _ipRemote = string.Empty;
+        private int _portRemote = 0;
+        private int _portLocal;
+        private int _maxNoResponseTime;
+        private int _remoteUserId;
+        private readonly ConcurrentDictionary<string, FuturesContract> _futuresContracts;
+        private readonly List<string> _networkConnectionsPaths;
 
-        static object _IP_Remote_Obj = new object();
-        static object _Port_Remote_Obj = new object();
-        static object _Port_Local_Obj = new object();
-        static object _MaxNoResponseTime_Obj = new object();
-        static readonly object _ListNetworkConnectionsPaths_Object = new object();
-
-        static List<string> _ListNetworkConnectionsPaths = null;
-        static ConcurrentDictionary<string, FuturesContract> _Dictionary_Futures_Contracts = null;
-
-        public static string IP_Remote
+        private SharedLocal()
         {
-            get { lock (_IP_Remote_Obj) return _IP_Remote; }
-            set { lock (_IP_Remote_Obj) _IP_Remote = value; }
+            _futuresContracts = new ConcurrentDictionary<string, FuturesContract>();
+            _networkConnectionsPaths = new List<string>();
         }
 
-        public static int Port_Remote
+        public static SharedLocal Instance
         {
-            get { lock (_Port_Remote_Obj) return _Port_Remote; }
-            set { lock (_Port_Remote_Obj) _Port_Remote = value; }
+            get { return _instance.Value; }
         }
 
-        public static int Port_Local
+        public string IpRemote
         {
-            get { lock (_Port_Local_Obj) return _Port_Local; }
-            set { lock (_Port_Local_Obj) _Port_Local = value; }
-        }
-
-        public static int MaxNoResponseTime
-        {
-            get { lock (_MaxNoResponseTime_Obj) return _MaxNoResponseTime; }
-            set { lock (_MaxNoResponseTime_Obj) _MaxNoResponseTime = value; }
-        }
-        public static List<string> NetworkConnectionsPaths
-        {
-            get { lock (_ListNetworkConnectionsPaths_Object) { return _ListNetworkConnectionsPaths; } }
-        }
-
-        public static void PopulateNetworkConnectionsPaths()
-        {
-            _ListNetworkConnectionsPaths = FlatFileManager.Populate_ListNetworkConnectionsPaths();
-        }
-
-        public static void PopulateDictionaryFuturesContracts()
-        {
-            _Dictionary_Futures_Contracts = FlatFileManager.CreateDictionaryFuturesContracts();
-        }
-
-        public static FuturesContract CheckNonStandardFuturesQuote(string symbol)
-        {
-            if (_Dictionary_Futures_Contracts.ContainsKey(symbol))
+            get { return Interlocked.CompareExchange(ref _ipRemote, string.Empty, string.Empty); }
+            set
             {
-                if (_Dictionary_Futures_Contracts[symbol].NonStandard)
-                    return _Dictionary_Futures_Contracts[symbol];
+                if (value == null) throw new ArgumentNullException("IpRemote");
+                Interlocked.Exchange(ref _ipRemote, value);
             }
+        }
 
+        public int PortRemote
+        {
+            get { return Interlocked.CompareExchange(ref _portRemote, 0, 0); }
+            set { Interlocked.Exchange(ref _portRemote, value); }
+        }
+
+        public int PortLocal
+        {
+            get { return Interlocked.CompareExchange(ref _portLocal, 0, 0); }
+            set { Interlocked.Exchange(ref _portLocal, value); }
+        }
+
+        public int MaxNoResponseTime
+        {
+            get { return Interlocked.CompareExchange(ref _maxNoResponseTime, 0, 0); }
+            set { Interlocked.Exchange(ref _maxNoResponseTime, value); }
+        }
+
+        // Returns a read-only view of the network connections paths to prevent external modification
+        public IList<string> NetworkConnectionsPaths
+        {
+            get
+            {
+                lock (_networkConnectionsPaths)
+                {
+                    return _networkConnectionsPaths.AsReadOnly();
+                }
+            }
+        }
+
+        public void PopulateNetworkConnectionsPaths()
+        {
+            try
+            {
+                IList<string> paths = FlatFileManager.Populate_ListNetworkConnectionsPaths();
+                if (paths == null)
+                {
+                    paths = new List<string>();
+                }
+                lock (_networkConnectionsPaths)
+                {
+                    _networkConnectionsPaths.Clear();
+                    _networkConnectionsPaths.AddRange(paths);
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException("Failed to populate network connections paths", ex);
+            }
+        }
+
+        public void PopulateFuturesContracts()
+        {
+            try
+            {
+                IDictionary<string, FuturesContract> contracts = FlatFileManager.CreateDictionaryFuturesContracts();
+                if (contracts == null)
+                {
+                    contracts = new Dictionary<string, FuturesContract>();
+                }
+                _futuresContracts.Clear();
+                foreach (var kvp in contracts)
+                {
+                    _futuresContracts.TryAdd(kvp.Key, kvp.Value);
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException("Failed to populate futures contracts", ex);
+            }
+        }
+
+        // Returns null if no non-standard futures contract is found for the symbol
+        public FuturesContract CheckNonStandardFuturesQuote(string symbol)
+        {
+            if (symbol == null) throw new ArgumentNullException("symbol");
+            FuturesContract contract;
+            if (_futuresContracts.TryGetValue(symbol, out contract) && contract.NonStandard)
+            {
+                return contract;
+            }
             return null;
         }
 
-        public static string Get_RemoteUserID()
+        public string GetNextRemoteUserId()
         {
-            _RemoteUserID++;
-            return _RemoteUserID.ToString();
+            int newId = Interlocked.Increment(ref _remoteUserId);
+            return newId.ToString();
         }
-
     }
 }

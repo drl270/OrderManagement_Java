@@ -1,271 +1,502 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using System.IO;
-using System.Threading;
-using System.Net;
 using System.Net.Sockets;
+using System.Text;
+using System.Threading;
 
-namespace Quote_Server
+namespace QuoteServer
 {
-    public class ConnectedClient
+    public class ConnectedClient : IDisposable
     {
-        private const Int32 bytes_to_read = 1024;
-        private byte[] readBuffer = new byte[bytes_to_read];
-        NetworkStream _NetworkStream;
-        TcpClient _TcpClient;
-        private string MessageBuffer = "";
-        private bool _IncludeAllData = false;
+        private const int BufferSize = 1024;
+        private readonly byte[] _readBuffer;
+        private readonly NetworkStream _networkStream;
+        private readonly TcpClient _tcpClient;
+        private readonly Form1 _parentForm;
+        private readonly Client _client;
+        private readonly Dictionary<string, BidAsk> _bidAskDictionary;
+        private readonly List<string> _symbolList;
+        private readonly object _messageBufferLock;
+        private readonly object _symbolListLock;
+        private string _messageBuffer;
+        private bool _includeAllData;
+        private DateTime _lastConnectionTestTime;
+        private DateTime _quoteTimeStamp;
+        private string _userId;
+        private string _lastSymbol;
+        private double _lastBid;
+        private double _lastAsk;
+        private bool _sendAllSymbols;
+        private bool _disposed;
 
-        private DateTime _LastConnectionTestTime;
-        private DateTime _QuoteTimeStamp;
-        private string _UserID;
-        private string _LastSymbol = "";
-        private double _LastBid = 0;
-        private double _LastAsk = 0;
-        private Form1 _Form1;
+        public event EventHandler<string> ConnectionLost;
 
-        private object _UserID_Obj = new object();
-
-        private Dictionary<string, Bid_Ask> Dictionary_BidAskObjects = new Dictionary<string, Bid_Ask>();
-
-        public event EventHandler<string> ConnectedClientConnectionLost;
-
-        private List<string> List_Symbols = new List<string>();
-        private bool SendAll = false;
-
-        public ConnectedClient(TcpClient tcpClient, Form1 p_Form1)
+        public string UserId
         {
-            _Form1 = p_Form1;
-            Client.QuoteUpdate += Client_QuoteUpdate;
-            p_Form1.TestConnectionStatus += P_Form1_TestConnectionStatus; 
-            _TcpClient = tcpClient;
-            _NetworkStream = _TcpClient.GetStream();
-            _NetworkStream.BeginRead(readBuffer, 0, bytes_to_read, DoRead, _TcpClient);
-            _LastConnectionTestTime = DateTime.Now;
-        }
-
-        private void P_Form1_TestConnectionStatus()
-        {
-            TimeSpan ts = DateTime.Now - _LastConnectionTestTime;
-            if (ts.Seconds > SharedLocal.MaxNoResponseTime)
-            {
-                _Form1.TestConnectionStatus -= P_Form1_TestConnectionStatus;
-                Client.QuoteUpdate -= Client_QuoteUpdate;
-                Connectionlost();
-            }
-        }
-
-        private void Client_QuoteUpdate(object sender, QuoteEventArgs e)
-        {
-            if (List_Symbols.Contains(e.Symbol) || SendAll)
-            {
-               if (SendAll)
-                {
-                    if (Dictionary_BidAskObjects.ContainsKey(e.Symbol))
-                    {
-                        if (Dictionary_BidAskObjects[e.Symbol].Bid != e.Bid || Dictionary_BidAskObjects[e.Symbol].Ask != e.Ask)
-                        {
-                            SendDataToClient(e.Symbol + "," + e.Bid.ToString() + "," + e.Ask.ToString());
-                            Dictionary_BidAskObjects[e.Symbol].Bid = e.Bid;
-                            Dictionary_BidAskObjects[e.Symbol].Ask = e.Ask;
-                        }
-                    }
-                    else
-                    {
-                        Dictionary_BidAskObjects.Add(e.Symbol, new Bid_Ask());
-                        Dictionary_BidAskObjects[e.Symbol].Bid = e.Bid;
-                        Dictionary_BidAskObjects[e.Symbol].Ask = e.Ask;
-                        SendDataToClient(e.Symbol + "," + e.Bid.ToString() + "," + e.Ask.ToString());                      
-                    }
-                }                
-               else
-                {
-                    if (_IncludeAllData)
-                    {
-                        SendDataToClient(e.Symbol + "," + e.Bid.ToString() + "," + e.Ask.ToString() + "," + e.BidSize.ToString() + "," + e.AskSize.ToString() + "," + e.Volume.ToString() + "," + e.LastQuantity.ToString() + "," + e.LAST_PRICE.ToString() + "," + e.CLOSE.ToString() + "," + e.HIGH.ToString() + "," + e.LOW.ToString());
-                    }
-                    else
-                    {
-                        if (Dictionary_BidAskObjects[e.Symbol].Bid != e.Bid || Dictionary_BidAskObjects[e.Symbol].Ask != e.Ask)
-                        {
-                            SendDataToClient(e.Symbol + "," + e.Bid.ToString() + "," + e.Ask.ToString());
-                            Dictionary_BidAskObjects[e.Symbol].Bid = e.Bid;
-                            Dictionary_BidAskObjects[e.Symbol].Ask = e.Ask;
-                        }
-                    }
-                }
-               
-                _LastSymbol = e.Symbol;
-                _LastBid = e.Bid;
-                _LastAsk = e.Ask;
-                _QuoteTimeStamp = e.Time;
-            }
-        }
-
-        public DisplayObject Get_displayObject()
-        {
-            return new DisplayObject(_UserID, _LastSymbol, _LastBid.ToString(), _LastAsk.ToString(), _QuoteTimeStamp.ToString(), _LastConnectionTestTime.ToString());
-        }
-
-        public string UserID
-        {
-            get { lock (_UserID_Obj) { return _UserID; } }
+            get => Interlocked.CompareExchange(ref _userId, null, null);
             set
             {
-                lock (_UserID_Obj)
+                Interlocked.Exchange(ref _userId, value);
+                SendTextDataToClient($"Connected,{value}");
+            }
+        }
+
+        public ConnectedClient(TcpClient client, Form1 form, Client quoteClient)
+        {
+            if (client == null) throw new ArgumentNullException(nameof(client));
+            if (form == null) throw new ArgumentNullException(nameof(form));
+            if (quoteClient == null) throw new ArgumentNullException(nameof(quoteClient));
+
+            _tcpClient = client;
+            _parentForm = form;
+            _client = quoteClient;
+            _readBuffer = new byte[BufferSize];
+            _bidAskDictionary = new Dictionary<string, BidAsk>();
+            _symbolList = new List<string>();
+            _messageBuffer = string.Empty;
+            _messageBufferLock = new object();
+            _symbolListLock = new object();
+            _includeAllData = false;
+            _sendAllSymbols = false;
+            _lastConnectionTestTime = DateTime.Now;
+            _quoteTimeStamp = DateTime.Now;
+            _lastSymbol = string.Empty;
+            _lastBid = 0;
+            _lastAsk = 0;
+
+            _networkStream = _tcpClient.GetStream();
+            _client.QuoteUpdate += ClientQuoteUpdate;
+            _parentForm.TestConnectionStatus += FormTestConnectionStatus;
+            BeginRead();
+        }
+
+        public DisplayObject GetDisplayObject()
+        {
+            return new DisplayObject(
+                UserId,
+                _lastSymbol,
+                _lastBid.ToString(),
+                _lastAsk.ToString(),
+                _quoteTimeStamp.ToString(),
+                _lastConnectionTestTime.ToString());
+        }
+
+        private void FormTestConnectionStatus()
+        {
+            TimeSpan elapsed = DateTime.Now - _lastConnectionTestTime;
+            if (elapsed.TotalSeconds > SharedLocal.Instance.MaxNoResponseTime)
+            {
+                HandleConnectionLost();
+            }
+        }
+
+        private void ClientQuoteUpdate(object sender, Quote quote)
+        {
+            if (quote == null) return;
+
+            lock (_symbolListLock)
+            {
+                if (_symbolList.Contains(quote.Symbol) || _sendAllSymbols)
                 {
-                    _UserID = value;
-                    SendDataToClient("Connected" + "," + _UserID);
+                    if (_sendAllSymbols)
+                    {
+                        HandleSendAllUpdate(quote);
+                    }
+                    else
+                    {
+                        HandleNormalUpdate(quote);
+                    }
+
+                    UpdateLastQuoteInfo(quote);
                 }
+            }
+        }
+
+        private void BeginRead()
+        {
+            try
+            {
+                if (!_disposed && _tcpClient.Connected)
+                {
+                    _networkStream.BeginRead(_readBuffer, 0, BufferSize, DoRead, null);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log error
+                // SharedLocal.Instance.AddListGeneralInfo($"BeginRead error for client {UserId}: {ex.Message}");
+                HandleConnectionLost();
             }
         }
 
         private void DoRead(IAsyncResult ar)
         {
-            TcpClient tcpClient = (TcpClient)ar.AsyncState;
             try
             {
-                int bytesRead = tcpClient.GetStream().EndRead(ar);
-                if (bytesRead > 0)
+                if (_disposed || !_tcpClient.Connected) return;
+
+                int bytesRead = _networkStream.EndRead(ar);
+                if (bytesRead <= 0)
                 {
-                    string Message = System.Text.Encoding.UTF8.GetString(readBuffer, 0, bytesRead);
-                    ProcessMessage(Message);
+                    HandleConnectionLost();
+                    return;
                 }
+
+                string message = Encoding.UTF8.GetString(_readBuffer, 0, bytesRead);
+                ProcessMessage(message);
+
+                BeginRead();
             }
-            catch (Exception ex) {  }
-            try
+            catch (Exception ex)
             {
-                NetworkStream quoteStream = tcpClient.GetStream();
-                quoteStream.BeginRead(readBuffer, 0, bytes_to_read, DoRead, tcpClient);
+                // Log error
+                // SharedLocal.Instance.AddListGeneralInfo($"Read error for client {UserId}: {ex.Message}");
+                HandleConnectionLost();
             }
-            catch (Exception ex) { }
         }
 
         private void ProcessMessage(string message)
         {
             try
             {
-                if (MessageBuffer.Length > 0)
-                    message = MessageBuffer + message;
-
-                string TempMessageBuffer = "";
-
-                for (int i = 0; i < message.Length; i++)
+                lock (_messageBufferLock)
                 {
-                    if (message.Substring(i, 1) != "#")
+                    if (_messageBuffer.Length > 0)
                     {
-                        if (message.Substring(i, 1) == "%")
-                        {
-                            string[] ParsedString = TempMessageBuffer.Split(',');
-                            if (ParsedString[0] == "List")
-                                ProcessList(TempMessageBuffer);
-                            else if (ParsedString[0] == "ALL")
-                                SendAll = true;
-                            else if (ParsedString[0] == "Tick_Data")
-                                Process_Tick_Data(TempMessageBuffer);
-                            else if (ParsedString[0] == "List_ManualTrade")
-                                Process_List_ManualTrade(TempMessageBuffer);
-                            else if (ParsedString[0] == "TestConnection")
-                                Process_TestConnectionAlive();
-                                                
-                            TempMessageBuffer = "";
-                        }
-                        else { TempMessageBuffer = TempMessageBuffer + message.Substring(i, 1); }
+                        message = _messageBuffer + message;
                     }
+
+                    string tempMessageBuffer = string.Empty;
+                    for (int i = 0; i < message.Length; i++)
+                    {
+                        char currentChar = message[i];
+                        if (currentChar != '#')
+                        {
+                            if (currentChar == '%')
+                            {
+                                ProcessCommand(tempMessageBuffer);
+                                tempMessageBuffer = string.Empty;
+                            }
+                            else
+                            {
+                                tempMessageBuffer += currentChar;
+                            }
+                        }
+                    }
+                    _messageBuffer = tempMessageBuffer;
                 }
-                MessageBuffer = TempMessageBuffer;
-            }
-            catch (Exception exception) { MessageBox.Show(Convert.ToString(exception)); }           
-        }
-
-
-        private void ProcessList(string message)
-        {
-            string[] ParsedString = message.Split(',');
-            foreach (string Symbol in ParsedString)
-            {
-                if (Symbol != "List")
-                {
-                    List_Symbols.Add(Symbol);
-                    Dictionary_BidAskObjects.Add(Symbol, new Bid_Ask());
-                }
-            }
-        }
-
-        private void Process_Tick_Data(string message)
-        {
-            string[] ParsedString = message.Split(',');
-            _IncludeAllData = true;
-            foreach (string Symbol in ParsedString)
-            {
-                if (Symbol != "Tick_Data")
-                    List_Symbols.Add(Symbol);
-            }
-        }
-
-        private void Process_List_ManualTrade(string message)
-        {
-            string[] ParsedString = message.Split(',');
-            _IncludeAllData = true;
-            foreach (string Symbol in ParsedString)
-            {
-                if (Symbol != "List_ManualTrade")
-                    List_Symbols.Add(Symbol);
-            }
-        }
-
-        private void Process_TestConnectionAlive()
-        {
-            try
-            {
-                SendDataToClient("ConnectionConfirmed");
-                _LastConnectionTestTime = DateTime.Now;
             }
             catch (Exception ex)
             {
-
+                // Log error instead of MessageBox
+                // SharedLocal.Instance.AddListGeneralInfo($"Message processing error for client {UserId}: {ex.Message}");
+                throw new InvalidOperationException($"Failed to process message for client {UserId}", ex);
             }
-           
         }
 
-        private void SendDataToClient(string p_message)
+        private void ProcessCommand(string command)
         {
-            byte[] message = Encoding.UTF8.GetBytes("#" + p_message + "%");
-            _NetworkStream.Write(message, 0, message.Length);
+            string[] parsedCommand = command.Split(',');
+            if (parsedCommand.Length == 0) return;
+
+            switch (parsedCommand[0])
+            {
+                case "List":
+                    ProcessListCommand(parsedCommand);
+                    break;
+                case "ALL":
+                    lock (_symbolListLock)
+                    {
+                        _sendAllSymbols = true;
+                    }
+                    break;
+                case "Tick_Data":
+                    ProcessTickDataCommand(parsedCommand);
+                    break;
+                case "List_ManualTrade":
+                    ProcessManualTradeCommand(parsedCommand);
+                    break;
+                case "TestConnection":
+                    ProcessKeepAlive();
+                    break;
+                default:
+                    // Log unknown command
+                    // SharedLocal.Instance.AddListGeneralInfo($"Unknown command for client {UserId}: {parsedCommand[0]}");
+                    break;
+            }
         }
 
-        private void Connectionlost()
+        private void ProcessListCommand(string[] parsedCommand)
         {
-            EventHandler<string> handler = ConnectedClientConnectionLost;
-            handler(this, _UserID);
+            lock (_symbolListLock)
+            {
+                foreach (string symbol in parsedCommand)
+                {
+                    if (symbol != "List" && !string.IsNullOrEmpty(symbol) && !_bidAskDictionary.ContainsKey(symbol))
+                    {
+                        _symbolList.Add(symbol);
+                        _bidAskDictionary.Add(symbol, new BidAsk());
+                    }
+                }
+            }
+        }
+
+        private void ProcessTickDataCommand(string[] parsedCommand)
+        {
+            lock (_symbolListLock)
+            {
+                _includeAllData = true;
+                foreach (string symbol in parsedCommand)
+                {
+                    if (symbol != "Tick_Data" && !string.IsNullOrEmpty(symbol) && !_symbolList.Contains(symbol))
+                    {
+                        _symbolList.Add(symbol);
+                    }
+                }
+            }
+        }
+
+        private void ProcessManualTradeCommand(string[] parsedCommand)
+        {
+            lock (_symbolListLock)
+            {
+                _includeAllData = true;
+                foreach (string symbol in parsedCommand)
+                {
+                    if (symbol != "List_ManualTrade" && !string.IsNullOrEmpty(symbol) && !_symbolList.Contains(symbol))
+                    {
+                        _symbolList.Add(symbol);
+                    }
+                }
+            }
+        }
+
+        private void ProcessKeepAlive()
+        {
+            try
+            {
+                SendTextDataToClient("ConnectionConfirmed");
+                _lastConnectionTestTime = DateTime.Now;
+            }
+            catch (Exception ex)
+            {
+                // Log error
+                // SharedLocal.Instance.AddListGeneralInfo($"Keep-alive error for client {UserId}: {ex.Message}");
+                HandleConnectionLost();
+            }
+        }
+
+        private void HandleSendAllUpdate(Quote quote)
+        {
+            lock (_symbolListLock)
+            {
+                if (_bidAskDictionary.ContainsKey(quote.Symbol))
+                {
+                    if (HasPriceChanged(quote))
+                    {
+                        SendTextDataToClient($"{quote.Symbol},{quote.Bid},{quote.Ask}");
+                        UpdateBidAsk(quote.Symbol, quote.Bid, quote.Ask);
+                    }
+                }
+                else
+                {
+                    _bidAskDictionary.Add(quote.Symbol, new BidAsk { Bid = quote.Bid, Ask = quote.Ask });
+                    SendTextDataToClient($"{quote.Symbol},{quote.Bid},{quote.Ask}");
+                }
+            }
+        }
+
+        private void HandleNormalUpdate(Quote quote)
+        {
+            lock (_symbolListLock)
+            {
+                if (_includeAllData)
+                {
+                    string fullData = $"{quote.Symbol},{quote.Bid},{quote.Ask},{quote.BidSize},{quote.AskSize}," +
+                                      $"{quote.Volume},{quote.LastQuantity},{quote.LastPrice},{quote.Close},{quote.High},{quote.Low}";
+                    SendTextDataToClient(fullData);
+                }
+                else
+                {
+                    if (_bidAskDictionary.ContainsKey(quote.Symbol))
+                    {
+                        if (HasPriceChanged(quote))
+                        {
+                            SendTextDataToClient($"{quote.Symbol},{quote.Bid},{quote.Ask}");
+                            UpdateBidAsk(quote.Symbol, quote.Bid, quote.Ask);
+                        }
+                    }
+                    else
+                    {
+                        _bidAskDictionary.Add(quote.Symbol, new BidAsk { Bid = quote.Bid, Ask = quote.Ask });
+                        SendTextDataToClient($"{quote.Symbol},{quote.Bid},{quote.Ask}");
+                    }
+                }
+            }
+        }
+
+        private bool HasPriceChanged(Quote quote)
+        {
+            return _bidAskDictionary[quote.Symbol].Bid != quote.Bid ||
+                   _bidAskDictionary[quote.Symbol].Ask != quote.Ask;
+        }
+
+        private void UpdateBidAsk(string symbol, double bid, double ask)
+        {
+            _bidAskDictionary[symbol].Bid = bid;
+            _bidAskDictionary[symbol].Ask = ask;
+        }
+
+        private void UpdateLastQuoteInfo(Quote quote)
+        {
+            _lastSymbol = quote.Symbol;
+            _lastBid = quote.Bid;
+            _lastAsk = quote.Ask;
+            _quoteTimeStamp = quote.Time;
+        }
+
+        private void SendTextDataToClient(string message)
+        {
+            try
+            {
+                if (_disposed || !_tcpClient.Connected) return;
+
+                byte[] data = Encoding.UTF8.GetBytes($"#{message}%");
+                _networkStream.Write(data, 0, data.Length);
+            }
+            catch (Exception ex)
+            {
+                // Log error
+                // SharedLocal.Instance.AddListGeneralInfo($"Send text data error for client {UserId}: {ex.Message}");
+                HandleConnectionLost();
+                throw new InvalidOperationException($"Failed to send text data to client {UserId}", ex);
+            }
+        }
+
+        private void SendQuoteToClient(string symbol, Quote quote)
+        {
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(128);
+            try
+            {
+                Span<byte> span = buffer.AsSpan();
+                int offset = 0;
+
+                byte[] symbolBytes = Encoding.UTF8.GetBytes(symbol);
+                WriteInt16LittleEndian(span, offset, (short)symbolBytes.Length);
+                offset += 2;
+                symbolBytes.CopyTo(span.Slice(offset, symbolBytes.Length));
+                offset += symbolBytes.Length;
+
+                byte[] bidBytes = BitConverter.GetBytes(quote.Bid);
+                bidBytes.CopyTo(span.Slice(offset, 8));
+                offset += 8;
+
+                byte[] askBytes = BitConverter.GetBytes(quote.Ask);
+                askBytes.CopyTo(span.Slice(offset, 8));
+                offset += 8;
+
+                WriteInt32LittleEndian(span, offset, quote.BidSize);
+                offset += 4;
+                WriteInt32LittleEndian(span, offset, quote.AskSize);
+                offset += 4;
+                WriteInt32LittleEndian(span, offset, quote.Volume);
+                offset += 4;
+                WriteInt32LittleEndian(span, offset, quote.LastQuantity);
+                offset += 4;
+
+                byte[] lastPriceBytes = BitConverter.GetBytes(quote.LastPrice);
+                lastPriceBytes.CopyTo(span.Slice(offset, 8));
+                offset += 8;
+
+                byte[] closeBytes = BitConverter.GetBytes(quote.Close);
+                closeBytes.CopyTo(span.Slice(offset, 8));
+                offset += 8;
+
+                byte[] highBytes = BitConverter.GetBytes(quote.High);
+                highBytes.CopyTo(span.Slice(offset, 8));
+                offset += 8;
+
+                byte[] lowBytes = BitConverter.GetBytes(quote.Low);
+                lowBytes.CopyTo(span.Slice(offset, 8));
+                offset += 8;
+
+                _networkStream.Write(buffer, 0, offset);
+            }
+            catch (Exception ex)
+            {
+                // Log error
+                // SharedLocal.Instance.AddListGeneralInfo($"Send quote error for client {UserId}: {ex.Message}");
+                HandleConnectionLost();
+                throw new InvalidOperationException($"Failed to send quote to client {UserId}", ex);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+        }
+
+        private void WriteInt16LittleEndian(Span<byte> span, int offset, short value)
+        {
+            span[offset] = (byte)(value & 0xFF);
+            span[offset + 1] = (byte)((value >> 8) & 0xFF);
+        }
+
+        private void WriteInt32LittleEndian(Span<byte> span, int offset, int value)
+        {
+            span[offset] = (byte)(value & 0xFF);
+            span[offset + 1] = (byte)((value >> 8) & 0xFF);
+            span[offset + 2] = (byte)((value >> 16) & 0xFF);
+            span[offset + 3] = (byte)((value >> 24) & 0xFF);
+        }
+
+        private void HandleConnectionLost()
+        {
+            if (_disposed) return;
+
+            ConnectionLost?.Invoke(this, UserId);
+            Dispose();
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+
+            _disposed = true;
+            try
+            {
+                _parentForm.TestConnectionStatus -= FormTestConnectionStatus;
+                _client.QuoteUpdate -= ClientQuoteUpdate;
+                if (_tcpClient.Connected)
+                {
+                    _tcpClient.Close();
+                }
+                _networkStream?.Dispose();
+                _tcpClient.Dispose();
+            }
+            catch (Exception ex)
+            {
+                // Log error
+                // SharedLocal.Instance.AddListGeneralInfo($"Dispose error for client {UserId}: {ex.Message}");
+            }
         }
     }
 
-    public class Bid_Ask
+    public class BidAsk
     {
-        private double _Bid = 0;
-        private double _Ask = 0;
-
-        private object _Bid_Object = new object();
-        private object _Ask_Object = new object();
+        private double _bid;
+        private double _ask;
 
         public double Bid
         {
-            get { lock (_Bid_Object) { return _Bid; } }
-            set {  lock (_Bid_Object) { _Bid = value; } }
+            get => Interlocked.CompareExchange(ref _bid, 0, 0);
+            set => Interlocked.Exchange(ref _bid, value);
         }
 
         public double Ask
         {
-            get {  lock (_Ask_Object) { return _Ask; } }
-            set {  lock (_Ask_Object) { _Ask = value; } }
+            get => Interlocked.CompareExchange(ref _ask, 0, 0);
+            set => Interlocked.Exchange(ref _ask, value);
         }
     }
 }
