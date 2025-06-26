@@ -71,7 +71,7 @@ namespace QuoteServer
         {
             try
             {
-                IList<string> paths = FlatFileManager.Populate_ListNetworkConnectionsPaths();
+                IList<string> paths = FileManager.Populate_ListNetworkConnectionsPaths();
                 if (paths == null)
                 {
                     paths = new List<string>();
@@ -92,7 +92,7 @@ namespace QuoteServer
         {
             try
             {
-                IDictionary<string, FuturesContract> contracts = FlatFileManager.CreateDictionaryFuturesContracts();
+                IDictionary<string, FuturesContract> contracts = FileManager.CreateDictionaryFuturesContracts();
                 if (contracts == null)
                 {
                     contracts = new Dictionary<string, FuturesContract>();

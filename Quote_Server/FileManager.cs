@@ -8,7 +8,7 @@ namespace QuoteServer
     /// <summary>
     /// Provides utility methods for reading configuration data from flat files.
     /// </summary>
-    public static class FlatFileManager
+    public static class FileManager
     {
         private const string NetworkConnectionsPath = @"C:\CommonDatabases\NetworkConnections\Paths.txt";
         private const string FuturesContractFileName = @"CommonDatabases\Futures_Contract_Info.txt";
