@@ -41,7 +41,6 @@ namespace QuoteServer
             }
             catch (Exception)
             {
-                // Silent fail to avoid crashing; could log to console in debug mode
 #if DEBUG
                 Console.WriteLine($"Failed to write to log file: {logEntry}");
 #endif
